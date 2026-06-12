@@ -1,0 +1,26 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: 22
+          script: |
+            cd /var/www/Rain_studio
+            git config --global --add safe.directory /var/www/Rain_studio
+            git pull origin main
+            npm install
+            npm run build
+            chown -R www-data:www-data /var/www/Rain_studio
+            chmod -R 755 /var/www/Rain_studio
