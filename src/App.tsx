@@ -237,35 +237,149 @@ const TranscribeForm = () => {
 };
 
 const LogoMergeForm = () => {
-    const [imgUrl, setImgUrl] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState(null);
-  
-    const handleMerge = async () => {
-      setLoading(true); setResult(null);
-      try {
-        const res = await apiCall('/image/merge-logo', 'POST', { image_url: imgUrl, scale: 0.2, auto_position: true, padding: 20 });
-        setResult(res);
-      } catch (err) {
-        alert(err.message);
-      } finally {
-        setLoading(false);
-      }
+  const [imgUrl, setImgUrl] = useState('');
+  const [imageBase64, setImageBase64] = useState('');
+  const [imageFileName, setImageFileName] = useState('');
+  const [imagePreview, setImagePreview] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setImageFileName(file.name);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const b64 = reader.result;
+      setImageBase64(b64);
+      setImagePreview(b64);
     };
-  
-    return (
-      <div className="space-y-4">
-        <Input label="Image Background URL" value={imgUrl} onChange={(e) => setImgUrl(e.target.value)} placeholder="https://..." />
-        <Button onClick={handleMerge} loading={loading} className="w-full" disabled={!imgUrl}><ImageIcon className="w-4 h-4"/> Đóng Dấu Logo</Button>
-        {result?.download_url && (
-            <div className="mt-4">
-                <img src={result.download_url} alt="Result" className="w-full rounded border border-gray-600 mb-2"/>
-                <a href={result.download_url} target="_blank" className="text-blue-400 hover:underline text-sm">Mở ảnh gốc</a>
-            </div>
+    reader.readAsDataURL(file);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      setImageFileName(file.name);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const b64 = reader.result;
+        setImageBase64(b64);
+        setImagePreview(b64);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleClearImage = () => {
+    setImageBase64('');
+    setImageFileName('');
+    setImagePreview('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleMerge = async () => {
+    setLoading(true); setError(null); setResult(null);
+    try {
+      const payload = {
+        scale: 0.2,
+        auto_position: true,
+        padding: 20
+      };
+
+      if (imageBase64) {
+        payload.image_base64 = imageBase64.split(',')[1];
+      } else if (imgUrl) {
+        payload.image_url = imgUrl;
+      } else {
+        throw new Error("Vui lòng chọn ảnh hoặc nhập URL ảnh nguồn.");
+      }
+
+      const res = await apiCall('/image/merge-logo', 'POST', payload);
+      setResult(res);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-1">
+        <label className="text-sm text-gray-400 font-medium">Chọn ảnh nguồn cần đóng dấu</label>
+        
+        {imagePreview ? (
+          <div className="relative border border-gray-700 bg-[#222] rounded-md p-4 flex flex-col items-center justify-center">
+            <img src={imagePreview} alt="Preview" className="max-h-48 rounded object-contain mb-2" />
+            <span className="text-xs text-gray-400 truncate max-w-xs">{imageFileName}</span>
+            <button 
+              onClick={handleClearImage}
+              className="absolute top-2 right-2 bg-red-600/80 hover:bg-red-600 text-white p-1 rounded-full transition-colors"
+              title="Xóa ảnh"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div 
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-gray-700 hover:border-gray-500 bg-[#333]/30 hover:bg-[#333]/50 rounded-md p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-200"
+          >
+            <ImageIcon className="w-8 h-8 text-gray-400" />
+            <p className="text-sm text-gray-300 font-medium text-center">
+              Kéo thả ảnh vào đây hoặc <span className="text-[#E50914] hover:underline text-cursor">chọn từ thư viện</span>
+            </p>
+            <p className="text-xs text-gray-500">Hỗ trợ PNG, JPG, JPEG</p>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileChange} 
+              accept="image/*" 
+              className="hidden" 
+            />
+          </div>
         )}
       </div>
-    );
-  };
+
+      <div className="text-center text-xs text-gray-500">Hoặc dùng URL ảnh</div>
+      <Input 
+        label="Image Background URL" 
+        value={imgUrl} 
+        onChange={(e) => {
+          setImgUrl(e.target.value);
+          if (e.target.value) handleClearImage();
+        }} 
+        placeholder="https://..." 
+        disabled={!!imageBase64}
+      />
+
+      <Button onClick={handleMerge} loading={loading} className="w-full" disabled={!imageBase64 && !imgUrl}>
+        <ImageIcon className="w-4 h-4"/> Đóng Dấu Logo
+      </Button>
+
+      {error && <div className="text-red-500 text-sm flex items-center gap-2 mt-2"><AlertCircle className="w-4 h-4"/> {error}</div>}
+
+      {result?.download_url && (
+        <div className="mt-6 p-4 bg-[#222] rounded flex flex-col gap-4">
+          <p className="text-green-400 text-sm flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/> Đóng dấu thành công!</p>
+          <img src={result.download_url} alt="Result" className="w-full rounded border border-gray-600 mb-2"/>
+          <a href={result.download_url} target="_blank" download="watermarked_image.png" className="text-white text-sm bg-[#333] p-2 text-center rounded hover:bg-[#404040]">Tải ảnh xuống</a>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // --- Main App & Layout ---
 
@@ -393,8 +507,8 @@ export default function App() {
 
       {/* Modal / Detail View */}
       {activeTool && (
-        <div className="fixed inset-0 z-[100] flex justify-center bg-black/70 overflow-y-auto backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-3xl my-auto bg-[#181818] shadow-2xl rounded-lg overflow-hidden border border-gray-800 mt-10 mb-10">
+        <div className="fixed inset-0 z-[100] flex justify-center items-start md:items-center p-4 md:p-10 bg-black/70 overflow-y-auto backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-3xl bg-[#181818] shadow-2xl rounded-lg overflow-hidden border border-gray-800 my-4 md:my-auto">
             {/* Modal Cover Image */}
             <div className="relative h-64 w-full">
               <img src={activeTool.img} alt={activeTool.title} className="w-full h-full object-cover" />
